@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\EquipoController;
 use App\Http\Controllers\CargaCombustibleController;
 use App\Http\Controllers\MantencionController;
+use App\Http\Controllers\ReporteEquipoController;
 
 // Pública. Limitada a 5 intentos por minuto para frenar fuerza bruta.
 Route::post('login', [AuthController::class, 'login'])->middleware('throttle:5,1');
@@ -27,5 +28,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // POST para registrar una nueva mantención.
     Route::get('equipos/{equipo}/mantenciones', [MantencionController::class, 'index']);
     Route::post('equipos/{equipo}/mantenciones', [MantencionController::class, 'store']);
+
+    // Ruta para obtener el reporte de un equipo en un rango de fechas.
+    Route::get('equipos/{equipo}/reporte', ReporteEquipoController::class);
 
 });
