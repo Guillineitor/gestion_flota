@@ -3,6 +3,8 @@
 use App\Http\Controllers\AuthController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\EquipoController;
+use App\Http\Controllers\CargaCombustibleController;
+use App\Http\Controllers\MantencionController;
 
 // Pública. Limitada a 5 intentos por minuto para frenar fuerza bruta.
 Route::post('login', [AuthController::class, 'login'])->middleware('throttle:5,1');
@@ -13,5 +15,17 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Genera index, store, show, update y destroy para /api/equipos.
     Route::apiResource('equipos', EquipoController::class);
+
+    // Rutas anidadas para las cargas de combustible.
+    // GET: Para listar las cargas de un equipo.
+    // POST para registrar una nueva carga.
+    Route::get('equipos/{equipo}/cargas-combustible', [CargaCombustibleController::class, 'index']);
+    Route::post('equipos/{equipo}/cargas-combustible', [CargaCombustibleController::class, 'store']);
+
+    // Rutas anidadas para las mantenciones.
+    // GET: Para listar las mantenciones de un equipo.
+    // POST para registrar una nueva mantención.
+    Route::get('equipos/{equipo}/mantenciones', [MantencionController::class, 'index']);
+    Route::post('equipos/{equipo}/mantenciones', [MantencionController::class, 'store']);
 
 });
