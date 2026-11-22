@@ -3,16 +3,18 @@
 namespace App\Enums;
 
 /**
- * Tipos de equipo que gestiona la plataforma.
+ * Tipos de equipo que gestiona la plataforma (camiones, excavadoras y generadores).
  *
  * El valor de cada caso es lo que se guarda en la base de datos
  * y lo que acepta/devuelve la API.
  */
 enum TipoEquipo: string
 {
-    /** Vehículo de transporte. */
+    /** Vehículos de la flota. */
+
     case Camion = 'camion';
 
-    /** Vehículo de movimiento de tierra. */
     case Excavadora = 'excavadora';
+
+    case Generador = 'generador';
 }

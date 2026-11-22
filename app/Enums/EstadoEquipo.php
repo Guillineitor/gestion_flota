@@ -5,7 +5,7 @@ namespace App\Enums;
 /**
  * Estado operativo de un equipo.
  */
-enum EstadoVehiculo: string
+enum EstadoEquipo: string
 {
     /** Disponible para trabajar. */
     case Operativo = 'operativo';
