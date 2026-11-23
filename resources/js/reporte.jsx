@@ -273,11 +273,6 @@ function FormularioEquipo({ inicial, esEdicion, horometroMinimo = 0, alGuardar, 
                     <CampoError mensaje={errores.tipo} />
                 </label>
                 <label>
-                    Patente
-                    <input value={valores.patente ?? ''} onChange={(e) => actualizar('patente', e.target.value)} maxLength={10} placeholder="Opcional" />
-                    <CampoError mensaje={errores.patente} />
-                </label>
-                <label>
                     Marca *
                     <input value={valores.marca} onChange={(e) => actualizar('marca', e.target.value)} maxLength={100} />
                     <CampoError mensaje={errores.marca} />
@@ -288,10 +283,9 @@ function FormularioEquipo({ inicial, esEdicion, horometroMinimo = 0, alGuardar, 
                     <CampoError mensaje={errores.modelo} />
                 </label>
                 <label>
-                    Horómetro actual
-                    <input type="number" step="0.1" min={horometroMinimo} value={valores.horometro_actual} onChange={(e) => actualizar('horometro_actual', e.target.value)} />
-                    <CampoError mensaje={errores.horometro_actual} />
-                    {esEdicion && <small>No puede ser menor al horómetro actual registrado.</small>}
+                    Patente
+                    <input value={valores.patente ?? ''} onChange={(e) => actualizar('patente', e.target.value)} maxLength={10} placeholder="Opcional" />
+                    <CampoError mensaje={errores.patente} />
                 </label>
                 <label>
                     Estado
@@ -299,6 +293,12 @@ function FormularioEquipo({ inicial, esEdicion, horometroMinimo = 0, alGuardar, 
                         {ESTADOS_EQUIPO.map((e) => <option key={e.value} value={e.value}>{e.label}</option>)}
                     </select>
                     <CampoError mensaje={errores.estado} />
+                </label>
+                <label>
+                    Horómetro actual
+                    <input type="number" step="0.1" min={horometroMinimo} value={valores.horometro_actual} onChange={(e) => actualizar('horometro_actual', e.target.value)} />
+                    <CampoError mensaje={errores.horometro_actual} />
+                    {esEdicion && <small>No puede ser menor al horómetro actual registrado.</small>}
                 </label>
             </div>
             {errorGeneral && <p className="error">{errorGeneral}</p>}
@@ -320,6 +320,8 @@ function Equipos({ token, alSesionInvalida }) {
     const [cargando, setCargando] = useState(false);
     const [error, setError] = useState(null);
     const [aviso, setAviso] = useState(ubicacion.state?.aviso ?? null);
+    const [confirmacion, setConfirmacion] = useState(null);
+    const [eliminando, setEliminando] = useState(false);
 
     // El aviso llega por el estado de navegación; se limpia para que no reaparezca al recargar.
     useEffect(() => {
@@ -348,17 +350,28 @@ function Equipos({ token, alSesionInvalida }) {
 
     useEffect(() => { cargarEquipos(1); }, [token]);
 
-    async function eliminarEquipo(equipo) {
-        if (!window.confirm(`¿Eliminar el equipo "${equipo.codigo}"? Esta acción no se puede deshacer.`)) return;
+    function solicitarEliminacion(equipo) {
+        setError(null);
+        setAviso(null);
+        setConfirmacion(equipo);
+    }
+
+    async function confirmarEliminacion() {
+        if (!confirmacion) return;
+        setEliminando(true);
         setError(null);
         setAviso(null);
         try {
-            await api(`/equipos/${equipo.id}`, { token, metodo: 'DELETE' });
+            await api(`/equipos/${confirmacion.id}`, { token, metodo: 'DELETE' });
             setAviso('Equipo eliminado correctamente.');
             const destino = equipos.length === 1 && pagina > 1 ? pagina - 1 : pagina;
+            setConfirmacion(null);
             await cargarEquipos(destino);
         } catch (e) {
+            setConfirmacion(null);
             manejarError(e);
+        } finally {
+            setEliminando(false);
         }
     }
 
@@ -406,7 +419,7 @@ function Equipos({ token, alSesionInvalida }) {
                                     <td><span className={`estado estado-${equipo.estado}`}>{etiquetaEstado(equipo.estado)}</span></td>
                                     <td className="acciones-tabla">
                                         <button type="button" className="secundario" onClick={() => navegar(`/equipos/${equipo.id}/editar`)}>Editar</button>
-                                        <button type="button" className="peligro" onClick={() => eliminarEquipo(equipo)}>Eliminar</button>
+                                        <button type="button" className="peligro" onClick={() => solicitarEliminacion(equipo)}>Eliminar</button>
                                     </td>
                                 </tr>
                             ))}
@@ -420,6 +433,23 @@ function Equipos({ token, alSesionInvalida }) {
                     <button type="button" className="secundario" disabled={pagina <= 1} onClick={() => cargarEquipos(pagina - 1)}>Anterior</button>
                     <span>Página {pagina} de {ultimaPagina}</span>
                     <button type="button" className="secundario" disabled={pagina >= ultimaPagina} onClick={() => cargarEquipos(pagina + 1)}>Siguiente</button>
+                </div>
+            )}
+
+            {confirmacion && (
+                <div className="modal-overlay" role="presentation" onClick={() => !eliminando && setConfirmacion(null)}>
+                    <div className="modal" role="dialog" aria-modal="true" aria-labelledby="titulo-confirmar-eliminar" onClick={(e) => e.stopPropagation()}>
+                        <h3 id="titulo-confirmar-eliminar">Eliminar equipo</h3>
+                        <p>¿Eliminar el equipo <strong>{confirmacion.codigo}</strong>? Esta acción no se puede deshacer.</p>
+                        <div className="acciones-formulario">
+                            <button type="button" className="peligro-solido" onClick={confirmarEliminacion} disabled={eliminando}>
+                                {eliminando ? 'Eliminando…' : 'Eliminar'}
+                            </button>
+                            <button type="button" className="secundario" onClick={() => setConfirmacion(null)} disabled={eliminando}>
+                                Cancelar
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
         </section>

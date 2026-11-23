@@ -105,7 +105,7 @@ h2 { font-size: 1.2rem; font-weight: 700; letter-spacing: -0.01em; margin: 0 0 4
 
 .grid-formulario {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 14px 16px;
 }
 
@@ -128,6 +128,18 @@ label {
     color: var(--texto-suave);
     text-transform: uppercase;
     letter-spacing: 0.04em;
+}
+
+label small,
+label .error-campo {
+    text-transform: none;
+    letter-spacing: normal;
+    font-size: 0.78rem;
+    font-weight: 500;
+}
+
+label small {
+    color: var(--texto-suave);
 }
 
 input, select {
@@ -185,6 +197,14 @@ button.peligro {
 button.peligro:hover:not(:disabled) {
     background: color-mix(in srgb, var(--peligro) 10%, transparent);
     color: var(--peligro-hover);
+}
+
+button.peligro-solido {
+    background: var(--peligro);
+    color: #fff;
+}
+button.peligro-solido:hover:not(:disabled) {
+    background: var(--peligro-hover);
 }
 
 /* ---------- Mensajes ---------- */
@@ -300,6 +320,49 @@ button.peligro:hover:not(:disabled) {
     .panel { margin-top: 6vh; padding: 22px; }
     .encabezado { flex-direction: column; align-items: stretch; }
     .barra-seccion { flex-direction: column; }
+}
+
+/* ---------- Modal de confirmación ---------- */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    z-index: 50;
+}
+
+.modal {
+    background: var(--superficie);
+    color: var(--texto);
+    border: 1px solid var(--borde);
+    border-radius: var(--radio);
+    box-shadow: var(--sombra);
+    padding: 24px;
+    width: 100%;
+    max-width: 440px;
+    display: grid;
+    gap: 12px;
+}
+
+.modal h3 {
+    margin: 0;
+    font-size: 1.15rem;
+}
+
+.modal p {
+    margin: 0;
+    color: var(--texto-suave);
+}
+
+.modal .acciones-formulario {
+    margin-top: 4px;
+}
+
+@media (max-width: 560px) {
+    .grid-formulario { grid-template-columns: 1fr; }
 }
 
 a.tab {
