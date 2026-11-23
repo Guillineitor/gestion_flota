@@ -2,8 +2,5 @@
 
 use Illuminate\Support\Facades\Route;
 
-Route::view('/reporte', 'reporte');
-
-Route::get('/', function () {
-    return view('welcome');
-});
+// Toda ruta que no sea /api devuelve la app de React, que decide qué pantalla mostrar.
+Route::view('/{ruta?}', 'reporte')->where('ruta', '^(?!api(/|$)).*$');

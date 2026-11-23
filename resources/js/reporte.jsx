@@ -1,10 +1,13 @@
-﻿import { useEffect, useState } from 'react';
+﻿import { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { BrowserRouter, Navigate, NavLink, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import '../css/reporte.css';
 
 /**
  * Pantalla principal autenticada: CRUD de equipos y reporte por equipo/rango.
  *
+ * Rutas del navegador (React Router): /login, /equipos, /equipos/nuevo,
+ * /equipos/:id/editar y /reportes.
  * Flujo: login (POST /api/login) -> gestión de equipos (GET/POST/PUT/DELETE /api/equipos)
  * y/o reporte (GET /api/equipos/{id}/reporte?desde=...&hasta=...).
  * El token se guarda en localStorage para mantener la sesión al recargar.
@@ -307,16 +310,21 @@ function FormularioEquipo({ inicial, esEdicion, horometroMinimo = 0, alGuardar, 
     );
 }
 
-/** CRUD de equipos: listar, crear, editar y eliminar. */
+/** Lista de equipos con paginación y eliminación. Crear y editar tienen su propia página. */
 function Equipos({ token, alSesionInvalida }) {
+    const navegar = useNavigate();
+    const ubicacion = useLocation();
     const [equipos, setEquipos] = useState([]);
     const [pagina, setPagina] = useState(1);
     const [ultimaPagina, setUltimaPagina] = useState(1);
     const [cargando, setCargando] = useState(false);
     const [error, setError] = useState(null);
-    const [aviso, setAviso] = useState(null);
-    const [modo, setModo] = useState(null); // 'crear' | { tipo: 'editar', equipo }
-    const [guardando, setGuardando] = useState(false);
+    const [aviso, setAviso] = useState(ubicacion.state?.aviso ?? null);
+
+    // El aviso llega por el estado de navegación; se limpia para que no reaparezca al recargar.
+    useEffect(() => {
+        if (ubicacion.state?.aviso) navegar(ubicacion.pathname, { replace: true, state: null });
+    }, []);
 
     function manejarError(e) {
         if (e.estado === 401) alSesionInvalida();
@@ -340,30 +348,6 @@ function Equipos({ token, alSesionInvalida }) {
 
     useEffect(() => { cargarEquipos(1); }, [token]);
 
-    async function crearEquipo(cuerpo) {
-        setGuardando(true);
-        try {
-            await api('/equipos', { token, metodo: 'POST', cuerpo });
-            setModo(null);
-            setAviso('Equipo creado correctamente.');
-            await cargarEquipos(1);
-        } finally {
-            setGuardando(false);
-        }
-    }
-
-    async function editarEquipo(id, cuerpo) {
-        setGuardando(true);
-        try {
-            await api(`/equipos/${id}`, { token, metodo: 'PUT', cuerpo });
-            setModo(null);
-            setAviso('Equipo actualizado correctamente.');
-            await cargarEquipos(pagina);
-        } finally {
-            setGuardando(false);
-        }
-    }
-
     async function eliminarEquipo(equipo) {
         if (!window.confirm(`¿Eliminar el equipo "${equipo.codigo}"? Esta acción no se puede deshacer.`)) return;
         setError(null);
@@ -385,41 +369,11 @@ function Equipos({ token, alSesionInvalida }) {
                     <h2>Equipos</h2>
                     <p className="resumen">Crear, consultar, editar y eliminar equipos de la flota.</p>
                 </div>
-                {!modo && <button type="button" onClick={() => { setAviso(null); setError(null); setModo('crear'); }}>Nuevo equipo</button>}
+                <button type="button" onClick={() => navegar('/equipos/nuevo')}>Nuevo equipo</button>
             </div>
 
             {aviso && <p className="aviso">{aviso}</p>}
             {error && <p className="error">{error}</p>}
-
-            {modo === 'crear' && (
-                <FormularioEquipo
-                    inicial={EQUIPO_VACIO}
-                    esEdicion={false}
-                    horometroMinimo={0}
-                    guardando={guardando}
-                    alGuardar={crearEquipo}
-                    alCancelar={() => setModo(null)}
-                />
-            )}
-
-            {modo?.tipo === 'editar' && (
-                <FormularioEquipo
-                    inicial={{
-                        codigo: modo.equipo.codigo ?? '',
-                        tipo: modo.equipo.tipo ?? '',
-                        patente: modo.equipo.patente ?? '',
-                        marca: modo.equipo.marca ?? '',
-                        modelo: modo.equipo.modelo ?? '',
-                        horometro_actual: String(modo.equipo.horometro_actual ?? 0),
-                        estado: modo.equipo.estado ?? 'operativo',
-                    }}
-                    esEdicion
-                    horometroMinimo={Number(modo.equipo.horometro_actual ?? 0)}
-                    guardando={guardando}
-                    alGuardar={(cuerpo) => editarEquipo(modo.equipo.id, cuerpo)}
-                    alCancelar={() => setModo(null)}
-                />
-            )}
 
             {cargando ? (
                 <p className="resumen">Cargando equipos…</p>
@@ -451,7 +405,7 @@ function Equipos({ token, alSesionInvalida }) {
                                     <td>{formatoNumero.format(equipo.horometro_actual)} h</td>
                                     <td><span className={`estado estado-${equipo.estado}`}>{etiquetaEstado(equipo.estado)}</span></td>
                                     <td className="acciones-tabla">
-                                        <button type="button" className="secundario" onClick={() => { setAviso(null); setError(null); setModo({ tipo: 'editar', equipo }); }}>Editar</button>
+                                        <button type="button" className="secundario" onClick={() => navegar(`/equipos/${equipo.id}/editar`)}>Editar</button>
                                         <button type="button" className="peligro" onClick={() => eliminarEquipo(equipo)}>Eliminar</button>
                                     </td>
                                 </tr>
@@ -467,6 +421,91 @@ function Equipos({ token, alSesionInvalida }) {
                     <span>Página {pagina} de {ultimaPagina}</span>
                     <button type="button" className="secundario" disabled={pagina >= ultimaPagina} onClick={() => cargarEquipos(pagina + 1)}>Siguiente</button>
                 </div>
+            )}
+        </section>
+    );
+}
+
+/** Página para crear (/equipos/nuevo) o editar (/equipos/:id/editar) un equipo. */
+function PaginaEquipo({ token, alSesionInvalida }) {
+    const { id } = useParams();
+    const navegar = useNavigate();
+    const esEdicion = id !== undefined;
+    const [equipo, setEquipo] = useState(null);
+    const [cargando, setCargando] = useState(esEdicion);
+    const [error, setError] = useState(null);
+    const [guardando, setGuardando] = useState(false);
+
+    // En edición se pide el equipo a la API, así la URL funciona al recargar o compartirla.
+    useEffect(() => {
+        if (!esEdicion) return undefined;
+
+        let activo = true;
+        setCargando(true);
+        setError(null);
+
+        api(`/equipos/${id}`, { token })
+            .then((datos) => { if (activo) setEquipo(datos.data ?? datos); })
+            .catch((e) => {
+                if (!activo) return;
+                if (e.estado === 401) alSesionInvalida();
+                else setError(e.estado === 404 ? 'El equipo no existe o fue eliminado.' : e.message);
+            })
+            .finally(() => { if (activo) setCargando(false); });
+
+        return () => { activo = false; };
+    }, [id, token]);
+
+    const inicial = useMemo(() => {
+        if (!equipo) return EQUIPO_VACIO;
+        return {
+            codigo: equipo.codigo ?? '',
+            tipo: equipo.tipo ?? '',
+            patente: equipo.patente ?? '',
+            marca: equipo.marca ?? '',
+            modelo: equipo.modelo ?? '',
+            horometro_actual: String(equipo.horometro_actual ?? 0),
+            estado: equipo.estado ?? 'operativo',
+        };
+    }, [equipo]);
+
+    async function guardar(cuerpo) {
+        setGuardando(true);
+        try {
+            if (esEdicion) {
+                await api(`/equipos/${id}`, { token, metodo: 'PUT', cuerpo });
+            } else {
+                await api('/equipos', { token, metodo: 'POST', cuerpo });
+            }
+            navegar('/equipos', {
+                state: { aviso: esEdicion ? 'Equipo actualizado correctamente.' : 'Equipo creado correctamente.' },
+            });
+        } catch (e) {
+            if (e.estado === 401) alSesionInvalida();
+            throw e; // El formulario muestra los errores por campo.
+        } finally {
+            setGuardando(false);
+        }
+    }
+
+    return (
+        <section>
+            <div className="barra-seccion">
+                <button type="button" className="secundario" onClick={() => navegar('/equipos')}>← Volver a equipos</button>
+            </div>
+
+            {cargando && <p className="resumen">Cargando equipo…</p>}
+            {error && <p className="error">{error}</p>}
+
+            {!cargando && !error && (
+                <FormularioEquipo
+                    inicial={inicial}
+                    esEdicion={esEdicion}
+                    horometroMinimo={esEdicion ? Number(equipo?.horometro_actual ?? 0) : 0}
+                    guardando={guardando}
+                    alGuardar={guardar}
+                    alCancelar={() => navegar('/equipos')}
+                />
             )}
         </section>
     );
@@ -596,8 +635,9 @@ function Reporte({ token, alSesionInvalida }) {
     );
 }
 
+/** Estructura autenticada: cabecera con pestañas y las rutas /equipos y /reportes. */
 function Aplicacion({ token, alSalir }) {
-    const [vista, setVista] = useState('equipos');
+    const claseTab = ({ isActive }) => (isActive ? 'tab activa' : 'tab');
 
     return (
         <div className="pagina pagina-amplia">
@@ -605,17 +645,41 @@ function Aplicacion({ token, alSalir }) {
                 <div>
                     <h1>Gestión de flota</h1>
                     <nav className="tabs" aria-label="Secciones">
-                        <button type="button" className={vista === 'equipos' ? 'tab activa' : 'tab'} onClick={() => setVista('equipos')}>Equipos</button>
-                        <button type="button" className={vista === 'reporte' ? 'tab activa' : 'tab'} onClick={() => setVista('reporte')}>Reportes</button>
+                        <NavLink to="/equipos" className={claseTab}>Equipos</NavLink>
+                        <NavLink to="/reportes" className={claseTab}>Reportes</NavLink>
                     </nav>
                 </div>
                 <button type="button" className="secundario" onClick={alSalir}>Cerrar sesión</button>
             </header>
 
-            {vista === 'equipos'
-                ? <Equipos token={token} alSesionInvalida={alSalir} />
-                : <Reporte token={token} alSesionInvalida={alSalir} />}
+            <Routes>
+                <Route path="/equipos" element={<Equipos token={token} alSesionInvalida={alSalir} />} />
+                <Route path="/equipos/nuevo" element={<PaginaEquipo token={token} alSesionInvalida={alSalir} />} />
+                <Route path="/equipos/:id/editar" element={<PaginaEquipo token={token} alSesionInvalida={alSalir} />} />
+                <Route path="/reportes" element={<Reporte token={token} alSesionInvalida={alSalir} />} />
+                <Route path="/login" element={<VolverDesdeLogin />} />
+                <Route path="*" element={<Navigate to="/equipos" replace />} />
+            </Routes>
         </div>
+    );
+}
+
+/** Con sesión iniciada, /login no tiene sentido: vuelve a la página que se quería ver (o a /equipos). */
+function VolverDesdeLogin() {
+    const { state } = useLocation();
+    const destino = state?.desde && state.desde !== '/login' ? state.desde : '/equipos';
+    return <Navigate to={destino} replace />;
+}
+
+/** Sin sesión: solo existe /login. Cualquier otra URL redirige ahí y recuerda a dónde iba el usuario. */
+function Acceso({ alIngresar }) {
+    const ubicacion = useLocation();
+
+    return (
+        <Routes>
+            <Route path="/login" element={<Login alIngresar={alIngresar} />} />
+            <Route path="*" element={<Navigate to="/login" replace state={{ desde: ubicacion.pathname }} />} />
+        </Routes>
     );
 }
 
@@ -635,9 +699,13 @@ function App() {
         setToken(null);
     }
 
-    return token
-        ? <Aplicacion token={token} alSalir={salir} />
-        : <Login alIngresar={ingresar} />;
+    return (
+        <BrowserRouter>
+            {token
+                ? <Aplicacion token={token} alSalir={salir} />
+                : <Acceso alIngresar={ingresar} />}
+        </BrowserRouter>
+    );
 }
 
 createRoot(document.getElementById('root')).render(<App />);

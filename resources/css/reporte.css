@@ -301,3 +301,10 @@ button.peligro:hover:not(:disabled) {
     .encabezado { flex-direction: column; align-items: stretch; }
     .barra-seccion { flex-direction: column; }
 }
+
+a.tab {
+    display: inline-block;
+    font-weight: 600;
+    border-radius: 8px;
+    text-decoration: none;
+}
