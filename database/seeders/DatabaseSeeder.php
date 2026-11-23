@@ -11,7 +11,7 @@ use Illuminate\Database\Seeder;
  *
  * Se ejecuta con: php artisan migrate:fresh --seed
  *
- * Crea un usuario administrador y seis equipos con cargas y mantenciones
+ * Crea un usuario y seis equipos con cargas y mantenciones
  * pensados para cubrir cada caso: con y sin preventiva previa, justo en el
  * límite de 250 horas, y equipos en distintos estados. Las fechas son fijas
  * (agosto a noviembre de 2026) para que los reportes sean reproducibles.
