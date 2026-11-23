@@ -1,0 +1,704 @@
+{
+  "info": {
+    "name": "Gestión de flota - API de equipos, combustible y mantenciones",
+    "description": "Colección para probar la API de gestión de flota. Orden recomendado: ejecutar las carpetas de la 1 a la 7 (o usar Run collection). El login guarda el token automáticamente y la carpeta 2 crea un equipo de prueba nuevo en cada ejecución, así los resultados no dependen de los datos del seeder.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      { "key": "token", "value": "{{token}}", "type": "string" }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.request.headers.upsert({ key: 'Accept', value: 'application/json' });"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    { "key": "baseUrl", "value": "http://127.0.0.1:8000/api" },
+    { "key": "token", "value": "" },
+    { "key": "nuevoEquipoId", "value": "" },
+    { "key": "nuevoCodigo", "value": "" },
+    { "key": "equipoTemporalId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. Autenticación",
+      "item": [
+        {
+          "name": "Login (guarda el token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Devuelve un token', () => pm.expect(json.token).to.be.a('string').and.not.empty);",
+                  "pm.collectionVariables.set('token', json.token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@construckit.test\",\n  \"password\": \"password\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/login",
+            "description": "Usuario creado por el seeder. Máximo 5 intentos por minuto. El token queda guardado en la variable de colección token."
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Equipos",
+      "item": [
+        {
+          "name": "Listar equipos",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Trae la lista en data', () => pm.expect(pm.response.json().data).to.be.an('array'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/equipos?page=1",
+            "description": "Lista paginada, de 15 en 15."
+          }
+        },
+        {
+          "name": "Crear equipo (guarda su id)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200 o 201', () => pm.expect([200, 201]).to.include(pm.response.code));",
+                  "const json = pm.response.json();",
+                  "const equipo = json.data || json;",
+                  "pm.collectionVariables.set('nuevoEquipoId', equipo.id);",
+                  "pm.collectionVariables.set('nuevoCodigo', equipo.codigo);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"codigo\": \"PRUEBA-{{$timestamp}}\",\n  \"tipo\": \"camion\",\n  \"patente\": \"TEST12\",\n  \"marca\": \"Volvo\",\n  \"modelo\": \"FH16\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/equipos",
+            "description": "El código lleva la hora actual para que sea único en cada ejecución. Estado y horómetro toman sus valores por defecto (operativo y 0)."
+          }
+        },
+        {
+          "name": "Ver equipo",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/equipos/{{nuevoEquipoId}}"
+          }
+        },
+        {
+          "name": "Editar equipo (PUT)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"marca\": \"Volvo\",\n  \"modelo\": \"FH 540\",\n  \"estado\": \"en_mantencion\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/equipos/{{nuevoEquipoId}}",
+            "description": "Basta con enviar los campos que cambian."
+          }
+        },
+        {
+          "name": "Editar equipo (PATCH)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"estado\": \"operativo\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/equipos/{{nuevoEquipoId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Cargas de combustible",
+      "item": [
+        {
+          "name": "Registrar carga 1 (horómetro 100)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 201', () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fecha_hora\": \"2026-03-10 08:00:00\",\n  \"litros\": 80,\n  \"monto_clp\": 90000,\n  \"horometro\": 100\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/equipos/{{nuevoEquipoId}}/cargas-combustible",
+            "description": "El horómetro del equipo sube de 0 a 100."
+          }
+        },
+        {
+          "name": "Registrar carga 2 (horómetro 150)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 201', () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fecha_hora\": \"2026-03-15 08:00:00\",\n  \"litros\": 100,\n  \"monto_clp\": 110000,\n  \"horometro\": 150\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/equipos/{{nuevoEquipoId}}/cargas-combustible",
+            "description": "El horómetro del equipo sube de 100 a 150."
+          }
+        },
+        {
+          "name": "Listar cargas del equipo",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Trae las 2 cargas registradas', () => pm.expect(pm.response.json().data).to.have.lengthOf(2));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/equipos/{{nuevoEquipoId}}/cargas-combustible",
+            "description": "Lista paginada, de 20 en 20."
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Mantenciones",
+      "item": [
+        {
+          "name": "Registrar mantención preventiva (horómetro 150)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 201', () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo\": \"preventiva\",\n  \"fecha\": \"2026-03-12\",\n  \"horometro\": 150,\n  \"costo_clp\": 250000,\n  \"descripcion\": \"Cambio de aceite y filtros\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/equipos/{{nuevoEquipoId}}/mantenciones",
+            "description": "El horómetro es igual al actual (150): se acepta y el equipo no cambia."
+          }
+        },
+        {
+          "name": "Listar mantenciones del equipo",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Trae la mantención registrada', () => pm.expect(pm.response.json().data).to.have.lengthOf(1));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/equipos/{{nuevoEquipoId}}/mantenciones",
+            "description": "Lista paginada, de 20 en 20."
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Reporte y preventivas",
+      "item": [
+        {
+          "name": "Reporte del equipo en un rango de fechas",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test('Considera las 2 cargas', () => pm.expect(Number(r.cargas_consideradas)).to.eql(2));",
+                  "pm.test('Litros totales = 180', () => pm.expect(Number(r.litros_totales)).to.eql(180));",
+                  "pm.test('Gasto en combustible = 200000', () => pm.expect(Number(r.gasto_combustible_clp)).to.eql(200000));",
+                  "pm.test('Gasto en mantenciones = 250000', () => pm.expect(Number(r.gasto_mantenciones_clp)).to.eql(250000));",
+                  "pm.test('Horas de uso = 50', () => pm.expect(Number(r.horas_de_uso)).to.eql(50));",
+                  "pm.test('Rendimiento = 2 L/h (100 litros / 50 horas)', () => pm.expect(Number(r.rendimiento_l_por_hora)).to.eql(2));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/equipos/{{nuevoEquipoId}}/reporte?desde=2026-03-01&hasta=2026-03-31",
+            "description": "La primera carga no cuenta como consumo: rendimiento = (100 L de la segunda carga) / (150 - 100 horas) = 2."
+          }
+        },
+        {
+          "name": "Equipos que necesitan mantención preventiva",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Trae la lista en equipos', () => pm.expect(pm.response.json().equipos).to.be.an('array'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/equipos/mantencion-preventiva",
+            "description": "Equipos con más de 250 horas desde su última preventiva (o desde cero si nunca tuvieron una). Con los datos del seeder aparecen CAMION-2, EXCAVADORA-1 y los equipos que se hayan modificado."
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Casos de error",
+      "item": [
+        {
+          "name": "401 - Sin token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/equipos"
+          }
+        },
+        {
+          "name": "Login con clave incorrecta",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Rechaza las credenciales', () => pm.expect([401, 422]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@construckit.test\",\n  \"password\": \"clave-incorrecta\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/login",
+            "description": "Cuenta para el límite de 5 intentos por minuto. Si se ejecuta muchas veces seguidas puede responder 429."
+          }
+        },
+        {
+          "name": "404 - Equipo inexistente",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/equipos/999999"
+          }
+        },
+        {
+          "name": "422 - Crear equipo con datos inválidos",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Detalla los errores en errors', () => pm.expect(pm.response.json().errors).to.be.an('object'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"codigo\": \"\",\n  \"tipo\": \"avion\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/equipos",
+            "description": "Falta el código, el tipo no existe y faltan marca y modelo."
+          }
+        },
+        {
+          "name": "422 - Código de equipo duplicado",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 422', () => pm.response.to.have.status(422));",
+                  "pm.test('El error es del campo codigo', () => pm.expect(pm.response.json().errors).to.have.property('codigo'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"codigo\": \"{{nuevoCodigo}}\",\n  \"tipo\": \"camion\",\n  \"marca\": \"Volvo\",\n  \"modelo\": \"FH16\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/equipos"
+          }
+        },
+        {
+          "name": "422 - Carga con horómetro menor al actual",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 422', () => pm.response.to.have.status(422));",
+                  "const mensaje = pm.response.json().errors.horometro[0];",
+                  "pm.test('El mensaje indica el equipo', () => pm.expect(mensaje).to.include(pm.collectionVariables.get('nuevoCodigo')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fecha_hora\": \"2026-03-20 08:00:00\",\n  \"litros\": 50,\n  \"monto_clp\": 55000,\n  \"horometro\": 50\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/equipos/{{nuevoEquipoId}}/cargas-combustible",
+            "description": "El equipo está en 150 y la carga trae 50: se rechaza y no se guarda nada."
+          }
+        },
+        {
+          "name": "422 - Horómetro con más de un decimal",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 422', () => pm.response.to.have.status(422));",
+                  "pm.test('El error es del campo horometro', () => pm.expect(pm.response.json().errors).to.have.property('horometro'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fecha_hora\": \"2026-03-20 08:00:00\",\n  \"litros\": 50,\n  \"monto_clp\": 55000,\n  \"horometro\": 160.25\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/equipos/{{nuevoEquipoId}}/cargas-combustible"
+          }
+        },
+        {
+          "name": "422 - Mantención con tipo inválido",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 422', () => pm.response.to.have.status(422));",
+                  "pm.test('El error es del campo tipo', () => pm.expect(pm.response.json().errors).to.have.property('tipo'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo\": \"cosmetica\",\n  \"fecha\": \"2026-03-20\",\n  \"horometro\": 160,\n  \"costo_clp\": 1000\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/equipos/{{nuevoEquipoId}}/mantenciones"
+          }
+        },
+        {
+          "name": "422 - Editar equipo bajando su horómetro",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 422', () => pm.response.to.have.status(422));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"horometro_actual\": 10\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/equipos/{{nuevoEquipoId}}",
+            "description": "Bajar el horómetro al editar sería una forma de saltarse la regla del horómetro."
+          }
+        },
+        {
+          "name": "422 - Reporte con fechas inválidas",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 422', () => pm.response.to.have.status(422));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/equipos/{{nuevoEquipoId}}/reporte?desde=2026-03-31&hasta=2026-03-01",
+            "description": "La fecha hasta es anterior a la fecha desde."
+          }
+        },
+        {
+          "name": "409 - Eliminar equipo con historial",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 409', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/equipos/{{nuevoEquipoId}}",
+            "description": "El equipo de prueba ya tiene cargas y una mantención, así que no se puede eliminar."
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Eliminar y cerrar sesión",
+      "item": [
+        {
+          "name": "Crear equipo temporal (sin historial)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200 o 201', () => pm.expect([200, 201]).to.include(pm.response.code));",
+                  "const json = pm.response.json();",
+                  "const equipo = json.data || json;",
+                  "pm.collectionVariables.set('equipoTemporalId', equipo.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"codigo\": \"TMP-{{$timestamp}}\",\n  \"tipo\": \"generador\",\n  \"marca\": \"Cummins\",\n  \"modelo\": \"C100\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/equipos"
+          }
+        },
+        {
+          "name": "Eliminar equipo sin historial",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200 o 204', () => pm.expect([200, 204]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/equipos/{{equipoTemporalId}}"
+          }
+        },
+        {
+          "name": "Logout (revoca el token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200 o 204', () => pm.expect([200, 204]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/logout",
+            "description": "Después de este paso el token deja de funcionar: hay que volver a ejecutar el login."
+          }
+        }
+      ]
+    }
+  ]
+}
