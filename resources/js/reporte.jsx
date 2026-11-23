@@ -1,14 +1,13 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import '../css/reporte.css';
 
 /**
- * Pantalla del reporte por equipo y rango de fechas.
+ * Pantalla principal autenticada: CRUD de equipos y reporte por equipo/rango.
  *
- * Flujo: login (POST /api/login) -> carga de equipos (GET /api/equipos)
- * -> reporte (GET /api/equipos/{id}/reporte?desde=...&hasta=...).
- * El token se guarda en localStorage: al recargar la página la sesión
- * se mantiene hasta que el usuario cierre sesión o el token venza (401).
+ * Flujo: login (POST /api/login) -> gestión de equipos (GET/POST/PUT/DELETE /api/equipos)
+ * y/o reporte (GET /api/equipos/{id}/reporte?desde=...&hasta=...).
+ * El token se guarda en localStorage para mantener la sesión al recargar.
  */
 
 const formatoCLP = new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 });
@@ -19,7 +18,28 @@ const HACE_90_DIAS = new Date(HOY.getTime() - 90 * 24 * 60 * 60 * 1000);
 
 const CLAVE_TOKEN = 'token';
 
-/** Lee el token guardado. Si el navegador bloquea el almacenamiento, devuelve null. */
+const TIPOS_EQUIPO = [
+    { value: 'camion', label: 'Camión' },
+    { value: 'excavadora', label: 'Excavadora' },
+    { value: 'generador', label: 'Generador' },
+];
+
+const ESTADOS_EQUIPO = [
+    { value: 'operativo', label: 'Operativo' },
+    { value: 'en_mantencion', label: 'En mantención' },
+    { value: 'fuera_de_servicio', label: 'Fuera de servicio' },
+];
+
+const EQUIPO_VACIO = {
+    codigo: '',
+    tipo: '',
+    patente: '',
+    marca: '',
+    modelo: '',
+    horometro_actual: '0',
+    estado: 'operativo',
+};
+
 function leerToken() {
     try {
         return localStorage.getItem(CLAVE_TOKEN);
@@ -28,7 +48,6 @@ function leerToken() {
     }
 }
 
-/** Guarda el token, o lo borra si recibe null. */
 function guardarToken(token) {
     try {
         if (token) {
@@ -41,24 +60,24 @@ function guardarToken(token) {
     }
 }
 
-/** Fecha local como Y-m-d (toISOString usaría UTC y podría correr el día). */
 function aYmd(fecha) {
     const mes = String(fecha.getMonth() + 1).padStart(2, '0');
     const dia = String(fecha.getDate()).padStart(2, '0');
     return `${fecha.getFullYear()}-${mes}-${dia}`;
 }
 
-/** Error de la API, con el código HTTP para poder reaccionar (por ejemplo, a un 401). */
+/** Error de la API, con código HTTP y errores de validación por campo. */
 class ErrorApi extends Error {
-    constructor(estado, mensaje) {
+    constructor(estado, mensaje, errores = null) {
         super(mensaje);
         this.estado = estado;
+        this.errores = errores;
     }
 }
 
 /**
- * Llama a la API y devuelve el JSON. Si la respuesta no es exitosa lanza
- * un ErrorApi con el primer mensaje de validación (422) o el mensaje general.
+ * Llama a la API y devuelve el JSON. Si falla lanza ErrorApi con el mensaje
+ * general y, en 422, los errores por campo.
  */
 async function api(ruta, { token, metodo = 'GET', cuerpo } = {}) {
     const respuesta = await fetch(`/api${ruta}`, {
@@ -71,20 +90,78 @@ async function api(ruta, { token, metodo = 'GET', cuerpo } = {}) {
         body: cuerpo ? JSON.stringify(cuerpo) : undefined,
     });
 
-    // El logout responde 204 sin cuerpo, por eso el catch.
     const datos = await respuesta.json().catch(() => ({}));
 
     if (!respuesta.ok) {
         const primerError = datos.errors ? Object.values(datos.errors)[0][0] : null;
-        throw new ErrorApi(respuesta.status, primerError ?? datos.message ?? 'Error inesperado');
+        throw new ErrorApi(respuesta.status, primerError ?? datos.message ?? 'Error inesperado', datos.errors ?? null);
     }
 
     return datos;
 }
 
-/** Formulario de inicio de sesión. Entrega el token a través de alIngresar. */
+/** Valida los datos del equipo en el cliente (refleja reglas del backend). */
+function validarEquipo(valores, { esEdicion, horometroMinimo = 0 }) {
+    const errores = {};
+    const codigo = valores.codigo.trim();
+    const marca = valores.marca.trim();
+    const modelo = valores.modelo.trim();
+    const patente = (valores.patente ?? '').trim();
+
+    if (!esEdicion || valores.codigo !== undefined) {
+        if (!codigo) errores.codigo = 'El código es obligatorio.';
+        else if (codigo.length > 50) errores.codigo = 'El código no puede superar los 50 caracteres.';
+    }
+
+    if (!esEdicion || valores.tipo !== undefined) {
+        if (!valores.tipo) errores.tipo = 'El tipo es obligatorio.';
+        else if (!TIPOS_EQUIPO.some((t) => t.value === valores.tipo)) errores.tipo = 'El tipo seleccionado no es válido.';
+    }
+
+    if (patente.length > 10) errores.patente = 'La patente no puede superar los 10 caracteres.';
+
+    if (!esEdicion || valores.marca !== undefined) {
+        if (!marca) errores.marca = 'La marca es obligatoria.';
+        else if (marca.length > 100) errores.marca = 'La marca no puede superar los 100 caracteres.';
+    }
+
+    if (!esEdicion || valores.modelo !== undefined) {
+        if (!modelo) errores.modelo = 'El modelo es obligatorio.';
+        else if (modelo.length > 100) errores.modelo = 'El modelo no puede superar los 100 caracteres.';
+    }
+
+    if (valores.horometro_actual !== '' && valores.horometro_actual !== undefined && valores.horometro_actual !== null) {
+        const numero = Number(valores.horometro_actual);
+        if (Number.isNaN(numero)) {
+            errores.horometro_actual = 'El horómetro debe ser un número.';
+        } else if (numero < horometroMinimo) {
+            errores.horometro_actual = esEdicion
+                ? `El horómetro no puede ser menor al actual (${formatoNumero.format(horometroMinimo)}).`
+                : 'El horómetro no puede ser negativo.';
+        }
+    }
+
+    if (valores.estado && !ESTADOS_EQUIPO.some((e) => e.value === valores.estado)) {
+        errores.estado = 'El estado seleccionado no es válido.';
+    }
+
+    return errores;
+}
+
+function etiquetaTipo(valor) {
+    return TIPOS_EQUIPO.find((t) => t.value === valor)?.label ?? valor;
+}
+
+function etiquetaEstado(valor) {
+    return ESTADOS_EQUIPO.find((e) => e.value === valor)?.label ?? valor;
+}
+
+function aErroresCampos(erroresApi) {
+    if (!erroresApi) return {};
+    return Object.fromEntries(Object.entries(erroresApi).map(([campo, mensajes]) => [campo, mensajes[0]]));
+}
+
 function Login({ alIngresar }) {
-    // Datos del usuario de ejemplo del seeder, para probar más rápido.
     const [email, setEmail] = useState('admin@construckit.test');
     const [password, setPassword] = useState('password');
     const [error, setError] = useState(null);
@@ -122,7 +199,279 @@ function Login({ alIngresar }) {
     );
 }
 
-/** Una cifra del reporte. */
+function CampoError({ mensaje }) {
+    if (!mensaje) return null;
+    return <small className="error-campo">{mensaje}</small>;
+}
+
+/** Formulario de creación/edición de un equipo. */
+function FormularioEquipo({ inicial, esEdicion, horometroMinimo = 0, alGuardar, alCancelar, guardando }) {
+    const [valores, setValores] = useState(inicial);
+    const [errores, setErrores] = useState({});
+    const [errorGeneral, setErrorGeneral] = useState(null);
+
+    useEffect(() => {
+        setValores(inicial);
+        setErrores({});
+        setErrorGeneral(null);
+    }, [inicial]);
+
+    function actualizar(campo, valor) {
+        setValores((prev) => ({ ...prev, [campo]: valor }));
+        setErrores((prev) => ({ ...prev, [campo]: null }));
+    }
+
+    async function enviar(evento) {
+        evento.preventDefault();
+        setErrorGeneral(null);
+
+        const locales = validarEquipo(valores, { esEdicion, horometroMinimo });
+        if (Object.keys(locales).length > 0) {
+            setErrores(locales);
+            return;
+        }
+
+        const cuerpo = {
+            codigo: valores.codigo.trim(),
+            tipo: valores.tipo,
+            patente: (valores.patente ?? '').trim() || null,
+            marca: valores.marca.trim(),
+            modelo: valores.modelo.trim(),
+            estado: valores.estado,
+        };
+
+        if (valores.horometro_actual !== '' && valores.horometro_actual !== undefined) {
+            cuerpo.horometro_actual = Number(valores.horometro_actual);
+        }
+
+        try {
+            await alGuardar(cuerpo);
+        } catch (e) {
+            setErrores(aErroresCampos(e.errores));
+            setErrorGeneral(e.message);
+        }
+    }
+
+    return (
+        <form className="panel formulario-equipo" onSubmit={enviar} noValidate>
+            <h2>{esEdicion ? 'Editar equipo' : 'Nuevo equipo'}</h2>
+            <div className="grid-formulario">
+                <label>
+                    Código *
+                    <input value={valores.codigo} onChange={(e) => actualizar('codigo', e.target.value)} maxLength={50} />
+                    <CampoError mensaje={errores.codigo} />
+                </label>
+                <label>
+                    Tipo *
+                    <select value={valores.tipo} onChange={(e) => actualizar('tipo', e.target.value)}>
+                        <option value="">Seleccionar…</option>
+                        {TIPOS_EQUIPO.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                    </select>
+                    <CampoError mensaje={errores.tipo} />
+                </label>
+                <label>
+                    Patente
+                    <input value={valores.patente ?? ''} onChange={(e) => actualizar('patente', e.target.value)} maxLength={10} placeholder="Opcional" />
+                    <CampoError mensaje={errores.patente} />
+                </label>
+                <label>
+                    Marca *
+                    <input value={valores.marca} onChange={(e) => actualizar('marca', e.target.value)} maxLength={100} />
+                    <CampoError mensaje={errores.marca} />
+                </label>
+                <label>
+                    Modelo *
+                    <input value={valores.modelo} onChange={(e) => actualizar('modelo', e.target.value)} maxLength={100} />
+                    <CampoError mensaje={errores.modelo} />
+                </label>
+                <label>
+                    Horómetro actual
+                    <input type="number" step="0.1" min={horometroMinimo} value={valores.horometro_actual} onChange={(e) => actualizar('horometro_actual', e.target.value)} />
+                    <CampoError mensaje={errores.horometro_actual} />
+                    {esEdicion && <small>No puede ser menor al horómetro actual registrado.</small>}
+                </label>
+                <label>
+                    Estado
+                    <select value={valores.estado} onChange={(e) => actualizar('estado', e.target.value)}>
+                        {ESTADOS_EQUIPO.map((e) => <option key={e.value} value={e.value}>{e.label}</option>)}
+                    </select>
+                    <CampoError mensaje={errores.estado} />
+                </label>
+            </div>
+            {errorGeneral && <p className="error">{errorGeneral}</p>}
+            <div className="acciones-formulario">
+                <button type="submit" disabled={guardando}>{guardando ? 'Guardando…' : 'Guardar'}</button>
+                <button type="button" className="secundario" onClick={alCancelar} disabled={guardando}>Cancelar</button>
+            </div>
+        </form>
+    );
+}
+
+/** CRUD de equipos: listar, crear, editar y eliminar. */
+function Equipos({ token, alSesionInvalida }) {
+    const [equipos, setEquipos] = useState([]);
+    const [pagina, setPagina] = useState(1);
+    const [ultimaPagina, setUltimaPagina] = useState(1);
+    const [cargando, setCargando] = useState(false);
+    const [error, setError] = useState(null);
+    const [aviso, setAviso] = useState(null);
+    const [modo, setModo] = useState(null); // 'crear' | { tipo: 'editar', equipo }
+    const [guardando, setGuardando] = useState(false);
+
+    function manejarError(e) {
+        if (e.estado === 401) alSesionInvalida();
+        else setError(e.message);
+    }
+
+    async function cargarEquipos(paginaDestino = pagina) {
+        setCargando(true);
+        setError(null);
+        try {
+            const respuesta = await api(`/equipos?page=${paginaDestino}`, { token });
+            setEquipos(respuesta.data);
+            setPagina(respuesta.current_page);
+            setUltimaPagina(respuesta.last_page);
+        } catch (e) {
+            manejarError(e);
+        } finally {
+            setCargando(false);
+        }
+    }
+
+    useEffect(() => { cargarEquipos(1); }, [token]);
+
+    async function crearEquipo(cuerpo) {
+        setGuardando(true);
+        try {
+            await api('/equipos', { token, metodo: 'POST', cuerpo });
+            setModo(null);
+            setAviso('Equipo creado correctamente.');
+            await cargarEquipos(1);
+        } finally {
+            setGuardando(false);
+        }
+    }
+
+    async function editarEquipo(id, cuerpo) {
+        setGuardando(true);
+        try {
+            await api(`/equipos/${id}`, { token, metodo: 'PUT', cuerpo });
+            setModo(null);
+            setAviso('Equipo actualizado correctamente.');
+            await cargarEquipos(pagina);
+        } finally {
+            setGuardando(false);
+        }
+    }
+
+    async function eliminarEquipo(equipo) {
+        if (!window.confirm(`¿Eliminar el equipo "${equipo.codigo}"? Esta acción no se puede deshacer.`)) return;
+        setError(null);
+        setAviso(null);
+        try {
+            await api(`/equipos/${equipo.id}`, { token, metodo: 'DELETE' });
+            setAviso('Equipo eliminado correctamente.');
+            const destino = equipos.length === 1 && pagina > 1 ? pagina - 1 : pagina;
+            await cargarEquipos(destino);
+        } catch (e) {
+            manejarError(e);
+        }
+    }
+
+    return (
+        <section>
+            <div className="barra-seccion">
+                <div>
+                    <h2>Equipos</h2>
+                    <p className="resumen">Crear, consultar, editar y eliminar equipos de la flota.</p>
+                </div>
+                {!modo && <button type="button" onClick={() => { setAviso(null); setError(null); setModo('crear'); }}>Nuevo equipo</button>}
+            </div>
+
+            {aviso && <p className="aviso">{aviso}</p>}
+            {error && <p className="error">{error}</p>}
+
+            {modo === 'crear' && (
+                <FormularioEquipo
+                    inicial={EQUIPO_VACIO}
+                    esEdicion={false}
+                    horometroMinimo={0}
+                    guardando={guardando}
+                    alGuardar={crearEquipo}
+                    alCancelar={() => setModo(null)}
+                />
+            )}
+
+            {modo?.tipo === 'editar' && (
+                <FormularioEquipo
+                    inicial={{
+                        codigo: modo.equipo.codigo ?? '',
+                        tipo: modo.equipo.tipo ?? '',
+                        patente: modo.equipo.patente ?? '',
+                        marca: modo.equipo.marca ?? '',
+                        modelo: modo.equipo.modelo ?? '',
+                        horometro_actual: String(modo.equipo.horometro_actual ?? 0),
+                        estado: modo.equipo.estado ?? 'operativo',
+                    }}
+                    esEdicion
+                    horometroMinimo={Number(modo.equipo.horometro_actual ?? 0)}
+                    guardando={guardando}
+                    alGuardar={(cuerpo) => editarEquipo(modo.equipo.id, cuerpo)}
+                    alCancelar={() => setModo(null)}
+                />
+            )}
+
+            {cargando ? (
+                <p className="resumen">Cargando equipos…</p>
+            ) : (
+                <div className="tabla-contenedor">
+                    <table className="tabla">
+                        <thead>
+                            <tr>
+                                <th>Código</th>
+                                <th>Tipo</th>
+                                <th>Patente</th>
+                                <th>Marca</th>
+                                <th>Modelo</th>
+                                <th>Horómetro</th>
+                                <th>Estado</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {equipos.length === 0 ? (
+                                <tr><td colSpan="8" className="celda-vacia">No hay equipos registrados.</td></tr>
+                            ) : equipos.map((equipo) => (
+                                <tr key={equipo.id}>
+                                    <td>{equipo.codigo}</td>
+                                    <td>{etiquetaTipo(equipo.tipo)}</td>
+                                    <td>{equipo.patente || '—'}</td>
+                                    <td>{equipo.marca}</td>
+                                    <td>{equipo.modelo}</td>
+                                    <td>{formatoNumero.format(equipo.horometro_actual)} h</td>
+                                    <td><span className={`estado estado-${equipo.estado}`}>{etiquetaEstado(equipo.estado)}</span></td>
+                                    <td className="acciones-tabla">
+                                        <button type="button" className="secundario" onClick={() => { setAviso(null); setError(null); setModo({ tipo: 'editar', equipo }); }}>Editar</button>
+                                        <button type="button" className="peligro" onClick={() => eliminarEquipo(equipo)}>Eliminar</button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+
+            {ultimaPagina > 1 && (
+                <div className="paginacion">
+                    <button type="button" className="secundario" disabled={pagina <= 1} onClick={() => cargarEquipos(pagina - 1)}>Anterior</button>
+                    <span>Página {pagina} de {ultimaPagina}</span>
+                    <button type="button" className="secundario" disabled={pagina >= ultimaPagina} onClick={() => cargarEquipos(pagina + 1)}>Siguiente</button>
+                </div>
+            )}
+        </section>
+    );
+}
+
 function Tarjeta({ titulo, valor, nota }) {
     return (
         <div className="tarjeta">
@@ -133,8 +482,7 @@ function Tarjeta({ titulo, valor, nota }) {
     );
 }
 
-/** Selector de equipo y fechas, y las cifras del reporte. */
-function Reporte({ token, alSalir }) {
+function Reporte({ token, alSesionInvalida }) {
     const [equipos, setEquipos] = useState([]);
     const [equipoId, setEquipoId] = useState('');
     const [desde, setDesde] = useState(aYmd(HACE_90_DIAS));
@@ -143,32 +491,26 @@ function Reporte({ token, alSalir }) {
     const [error, setError] = useState(null);
     const [cargando, setCargando] = useState(false);
 
-    /** Un 401 significa que el token ya no sirve: se vuelve al login. */
     function manejarError(e) {
-        if (e.estado === 401) {
-            alSalir();
-        } else {
-            setError(e.message);
-        }
+        if (e.estado === 401) alSesionInvalida();
+        else setError(e.message);
     }
 
-    // Carga todos los equipos para el selector, recorriendo las páginas.
     useEffect(() => {
         async function cargarEquipos() {
             try {
                 const todos = [];
-                let pagina = 1;
+                let pag = 1;
                 let ultima = 1;
-
                 do {
-                    const respuesta = await api(`/equipos?page=${pagina}`, { token });
+                    const respuesta = await api(`/equipos?page=${pag}`, { token });
                     todos.push(...respuesta.data);
                     ultima = respuesta.last_page;
-                    pagina++;
-                } while (pagina <= ultima);
+                    pag++;
+                } while (pag <= ultima);
 
                 setEquipos(todos);
-                if (todos.length > 0) setEquipoId(String(todos[0].id));
+                if (todos.length > 0) setEquipoId((actual) => actual || String(todos[0].id));
             } catch (e) {
                 manejarError(e);
             }
@@ -194,16 +536,19 @@ function Reporte({ token, alSalir }) {
     }
 
     return (
-        <div className="pagina">
-            <header className="encabezado">
-                <h1>Reporte por equipo</h1>
-                <button type="button" className="secundario" onClick={alSalir}>Cerrar sesión</button>
-            </header>
+        <section>
+            <div className="barra-seccion">
+                <div>
+                    <h2>Reporte por equipo</h2>
+                    <p className="resumen">Consulta consumo, gastos y rendimiento por rango de fechas.</p>
+                </div>
+            </div>
 
             <form className="panel filtros" onSubmit={generar}>
                 <label>
                     Equipo
                     <select value={equipoId} onChange={(e) => setEquipoId(e.target.value)} required>
+                        <option value="" disabled>Seleccionar…</option>
                         {equipos.map((equipo) => (
                             <option key={equipo.id} value={equipo.id}>{equipo.codigo}</option>
                         ))}
@@ -225,7 +570,7 @@ function Reporte({ token, alSalir }) {
             {error && <p className="error">{error}</p>}
 
             {reporte && (
-                <section>
+                <div>
                     <p className="resumen">
                         {reporte.equipo.codigo}, del {reporte.periodo.desde} al {reporte.periodo.hasta}
                         {' · '}{reporte.cargas_consideradas} cargas consideradas
@@ -245,15 +590,36 @@ function Reporte({ token, alSalir }) {
                                 : null}
                         />
                     </div>
-                </section>
+                </div>
             )}
+        </section>
+    );
+}
+
+function Aplicacion({ token, alSalir }) {
+    const [vista, setVista] = useState('equipos');
+
+    return (
+        <div className="pagina pagina-amplia">
+            <header className="encabezado">
+                <div>
+                    <h1>Gestión de flota</h1>
+                    <nav className="tabs" aria-label="Secciones">
+                        <button type="button" className={vista === 'equipos' ? 'tab activa' : 'tab'} onClick={() => setVista('equipos')}>Equipos</button>
+                        <button type="button" className={vista === 'reporte' ? 'tab activa' : 'tab'} onClick={() => setVista('reporte')}>Reportes</button>
+                    </nav>
+                </div>
+                <button type="button" className="secundario" onClick={alSalir}>Cerrar sesión</button>
+            </header>
+
+            {vista === 'equipos'
+                ? <Equipos token={token} alSesionInvalida={alSalir} />
+                : <Reporte token={token} alSesionInvalida={alSalir} />}
         </div>
     );
 }
 
-/** Muestra el login o el reporte según haya o no un token guardado. */
 function App() {
-    // Se lee del almacenamiento al iniciar, así la sesión sobrevive a recargar la página.
     const [token, setToken] = useState(leerToken);
 
     function ingresar(nuevoToken) {
@@ -261,7 +627,6 @@ function App() {
         setToken(nuevoToken);
     }
 
-    /** Revoca el token en el servidor (si falla no importa), lo borra y vuelve al login. */
     async function salir() {
         if (token) {
             await api('/logout', { metodo: 'POST', token }).catch(() => {});
@@ -271,7 +636,7 @@ function App() {
     }
 
     return token
-        ? <Reporte token={token} alSalir={salir} />
+        ? <Aplicacion token={token} alSalir={salir} />
         : <Login alIngresar={ingresar} />;
 }
 
