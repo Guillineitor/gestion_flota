@@ -307,7 +307,6 @@ caso. El combustible se valoriza a $1.504 por litro.
 - `resources/js/reporte.jsx`: la interfaz (login, equipos, formularios, reporte).
 - `resources/css/reporte.css`: estilos, con modo claro y oscuro automático.
 - `tests/Feature`: tests del horómetro, del reporte y de las preventivas.
-- `postman/`: colección de Postman para probar todos los endpoints.
 
 ## Lo que quedó fuera
 
